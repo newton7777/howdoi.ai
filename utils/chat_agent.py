@@ -2,17 +2,17 @@
 
 """
 import os
-from utils.giphy import GiphyAPIWrapper
+# from utils.giphy import GiphyAPIWrapper
 from dataclasses import dataclass
 
 from langchain.chains import LLMChain, LLMRequestsChain
 from langchain import Wikipedia, OpenAI
+from langchain.chat_models import ChatOpenAI
 from langchain.agents.react.base import DocstoreExplorer
+from langchain.agents import AgentType
 from langchain.agents import (
-    ZeroShotAgent,
     Tool,
     AgentExecutor,
-    get_all_tool_names,
     load_tools,
     initialize_agent,
 )
@@ -31,12 +31,22 @@ langchain.llm_cache = InMemoryCache()
 news_api_key = os.environ["NEWS_API_KEY"]
 tmdb_bearer_token = os.environ["TMDB_API_KEY"]
 
+from langchain.tools import AIPluginTool
+
+# llm = OpenAI(temperature=0)
+klarna_tools = [
+    AIPluginTool.from_plugin_url("https://www.klarna.com/.well-known/ai-plugin.json"),
+    # load_tools(['requests_all'])
+]
+# agent_chain = initialize_agent(tools, llm, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, verbose=True)
+
 
 @dataclass
 class ChatAgent:
     agent_executor: AgentExecutor = None
 
-    def _get_docstore_agent(self):
+    @staticmethod
+    def _get_docstore_agent():
         docstore = DocstoreExplorer(Wikipedia())
         docstore_tools = [
             Tool(name="Search", func=docstore.search, description="Search wikipedia"),
@@ -46,13 +56,15 @@ class ChatAgent:
                 description="Lookup a wikipedia page",
             ),
         ]
-        docstore_llm = OpenAI(temperature=0, model_name="gpt-3.5-turbo")
+        # docstore_llm = OpenAI(temperature=0, model_name="gpt-3.5-turbo")
+        docstore_llm = OpenAI(temperature=0)
         docstore_agent = initialize_agent(
-            docstore_tools, docstore_llm, agent="react-docstore", verbose=True
+            docstore_tools, docstore_llm, agent=AgentType.REACT_DOCSTORE, verbose=True
         )
         return docstore_agent
 
-    def _get_requests_llm_tool(self):
+    @staticmethod
+    def _get_requests_llm_tool():
         template = """
         Extracted: {requests_result}"""
 
@@ -71,29 +83,30 @@ class ChatAgent:
 
         return lambda_func
 
-    def __init__(self, *, conversation_chain: LLMChain = None, history_array):
+    def __init__(self, *, history_array):
         date = datetime.today().strftime("%B %d, %Y")
 
         # set up a Wikipedia docstore agent
-        docstore_agent = self._get_docstore_agent()
+        # docstore_agent = self._get_docstore_agent()
 
-        giphy = GiphyAPIWrapper()
+        # giphy = GiphyAPIWrapper()
 
         # tool_names = get_all_tool_names()
         tool_names = [
-            "wolfram-alpha",
-            "llm-math",
-            "open-meteo-api",
-            "news-api",
-            "tmdb-api",
-            "wikipedia",
+            # "wolfram-alpha",
+            # "llm-math",
+            # "open-meteo-api",
+            # "news-api",
+            # "tmdb-api",
+            # "wikipedia",
         ]
 
         requests_tool = self._get_requests_llm_tool()
 
         tools = load_tools(
             tool_names,
-            llm=OpenAI(temperature=0, model_name="gpt-3.5-turbo", verbose=True),
+            # llm=OpenAI(temperature=0, model_name="gpt-3.5-turbo", verbose=True),
+            llm=OpenAI(temperature=0, verbose=True),
             news_api_key=news_api_key,
             tmdb_bearer_token=tmdb_bearer_token,
         )
@@ -106,23 +119,23 @@ class ChatAgent:
                 )
 
         tools = tools + [
-            Tool(
-                name="WikipediaSearch",
-                description="Useful for answering a wide range of factual, scientific, academic, political and historical questions.",
-                func=docstore_agent.run,
-            ),
-            Tool(
-                name="GiphySearch",
-                func=giphy.run,
-                return_direct=True,
-                description="useful for when you need to find a gif or picture, and for adding humor to your replies. Input should be a query, and output will be an html embed code which you MUST include in your Final Answer.",
-            ),
+            # Tool(
+            #     name="WikipediaSearch",
+            #     description="Useful for answering a wide range of factual, scientific, academic, political and historical questions.",
+            #     func=docstore_agent.run,
+            # ),
+            # Tool(
+            #     name="GiphySearch",
+            #     func=giphy.run,
+            #     return_direct=True,
+            #     description="useful for when you need to find a gif or picture, and for adding humor to your replies. Input should be a query, and output will be an html embed code which you MUST include in your Final Answer.",
+            # ),
             Tool(
                 name="Requests",
                 func=requests_tool,
                 description="A portal to the internet. Use this when you need to get specific content from a site. Input should be a specific url, and the output will be all the text on that page.",
             ),
-        ]
+        ] + klarna_tools
 
         # set up the google search tool if the env var is set
         if "GOOGLE_API_KEY" in os.environ:
@@ -155,26 +168,24 @@ class ChatAgent:
 
         prefix = f"""{ai_prefix} is a large language model. {ai_prefix} is represented by a 🤖.
 
-{ai_prefix} uses a light, humorous tone, and very frequently includes emojis its responses. Responses with code examples should be formatted in code blocks using <pre><code></code></pre> tags.
+{ai_prefix} uses a light, humorous tone, and very frequently includes emojis in its responses. Responses with code examples should be formatted in code blocks using <pre><code></code></pre> tags.
 
 {ai_prefix} is designed to be able to assist with a wide range of tasks, from answering simple questions to providing in-depth explanations and discussions on a wide range of topics. As a language model, {ai_prefix} is able to generate human-like text based on the input it receives, allowing it to engage in natural-sounding conversations and provide responses that are coherent and relevant to the topic at hand.
 
 If {ai_prefix} can't provide a good response, it will truthfully answer that it can't help with the user's request.
 
-Overall, Assistant is a powerful tool that can help with a wide range of tasks and provide valuable insights and information on a wide range of topics. Whether you need help with a specific question or just want to have a conversation about a particular topic, Assistant is here to assist.
+Overall, {ai_prefix} is a powerful tool that can help with a wide range of tasks and provide valuable insights and information on a wide range of topics. Whether you need help with a specific question or just want to have a conversation about a particular topic, {ai_prefix} is here to assist.
 
 TOOLS:
 ------
 
-Assistant has access to the following tools:
+{ai_prefix} has access to the following tools:
 """
 
         suffix = f"""
 The current date is {date}. Questions that refer to a specific date or time period will be interpreted relative to this date.
 
-Questions that refer to a specific date or time period will be interpreted relative to this date.
-
-After you answer the question, you MUST to determine which langauge your answer is written in, and append the language code to the end of the Final Answer, within parentheses, like this (en-US).
+After you answer the question, you MUST determine which langauge your answer is written in, and append the language code to the end of the Final Answer, within parentheses, like this: (en-US).
 
 Begin!
 
@@ -191,7 +202,7 @@ New input: {{input}}
                 {f"{ai_prefix}": item["prompt"]}, {f"{human_prefix}": item["response"]}
             )
 
-        llm = OpenAI(temperature=0.5, model_name="gpt-3.5-turbo")
+        llm = ChatOpenAI(temperature=0.5)
         llm_chain = LLMChain(
             llm=llm,
             prompt=ConversationalAgent.create_prompt(
